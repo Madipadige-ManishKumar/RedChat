@@ -1,0 +1,849 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.gitignore
+chromeDB/110b413f-5379-4dfe-9b5b-becb0821555e/data_level0.bin
+chromeDB/110b413f-5379-4dfe-9b5b-becb0821555e/header.bin
+chromeDB/110b413f-5379-4dfe-9b5b-becb0821555e/length.bin
+chromeDB/110b413f-5379-4dfe-9b5b-becb0821555e/link_lists.bin
+chromeDB/chroma.sqlite3
+indest.py
+my_slack_bot.py
+rough.py
+slack_rag.py
+src/__init__.py
+src/agents/__init__.py
+src/agents/executor.py
+src/agents/prompts.py
+src/agents/tools.py
+src/config.py
+src/main.py
+src/MCP/Github/__init__.py
+src/MCP/Github/service.py
+src/rag/__init__.py
+src/rag/ingest.py
+src/rag/reteriver.py
+src/slack/__init__.py
+src/slack/client.py
+src/slack/handler.py
+src/slack/service.py
+src/utilis/reset_db.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".gitignore">
+venv
+.env
+</file>
+
+<file path="indest.py">
+import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+async def run_playwright_client():
+    # Windows needs 'npx.cmd' to execute correctly through standard IO
+    server_params = StdioServerParameters(
+        command="npx.cmd", 
+        args=["-y", "@modelcontextprotocol/server-playwright"],
+        env=None
+    )
+
+    print("🚀 Connecting to Playwright MCP Server...")
+
+    try:
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                # This is where your previous error occurred
+                await session.initialize()
+                print("✅ Connected successfully!")
+
+                # List tools to verify it's working
+                tools_response = await session.list_tools()
+                print(f"\nFound {len(tools_response.tools)} tools:")
+                for tool in tools_response.tools:
+                    print(f" - {tool.name}")
+                    
+    except Exception as e:
+        print(f"❌ Failed to connect: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(run_playwright_client())
+</file>
+
+<file path="my_slack_bot.py">
+import slack 
+import os 
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+token = os.getenv("slack_outh_token")
+
+client = slack.WebClient(token=token)
+
+
+client.chat_postMessage(channel="#general",text="Hello world This is message coming  from the python code ")
+</file>
+
+<file path="rough.py">
+import os
+import sys
+import time
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+# 1. LOAD ENVIRONMENT
+load_dotenv()
+apikey = os.getenv("apikey")
+
+if not apikey:
+    print("Error: 'apikey' not found in your .env file.")
+    sys.exit(1)
+
+# =========================================================
+# 2. THE TOOLS (Action)
+# =========================================================
+
+def search_internal_docs(query: str):
+    """Retrieves HR policy information."""
+    knowledge_base = {
+        "vacation": "Employees get 20 days of PTO per year.",
+        "remote work": "The company allows working from home 3 days a week."
+    }
+    # This print confirms the function was triggered
+    print(f"      >> EXECUTION: Searching docs for '{query}'...")
+    for key, content in knowledge_base.items():
+        if key in query.lower():
+            return {"result": content}
+    return {"error": "No documentation found."}
+
+def add_numbers(a: float, b: float):
+    """Performs addition."""
+    print(f"      >> EXECUTION: Adding {a} + {b}...")
+    return {"sum": a + b}
+
+# =========================================================
+# 3. THE ORCHESTRATOR (The Loop)
+# =========================================================
+
+def run_gemini_agent(user_prompt: str, api_key: str):
+    client = genai.Client(api_key=api_key)
+    # Ensure you use a valid model name
+    model_id = "gemini-2.5-flash" 
+
+    chat = client.chats.create(
+        model=model_id,
+        config=types.GenerateContentConfig(
+            tools=[search_internal_docs, add_numbers],
+            system_instruction="You are a helpful assistant. Follow the Thought-Action-Observation loop."
+        )
+    )
+
+    print(f"\n[USER]: {user_prompt}")
+    print("="*60)
+
+    # Turn 1
+    response = chat.send_message(user_prompt)
+
+    while True:
+        # The 'candidate' is the current state of the AI's response
+        candidate = response.candidates[0]
+        
+        # 1. THOUGHT: Did the model provide reasoning text?
+        thought = "".join([part.text for part in candidate.content.parts if part.text]).strip()
+        if thought:
+            print(f"\n[THOUGHT]: {thought}")
+        else:
+            print("\n[THOUGHT]: (The model is proceeding directly to action...)")
+
+        # 2. ACTION: Identify the tool calls
+        tool_calls = [part.function_call for part in candidate.content.parts if part.function_call]
+
+        if not tool_calls:
+            # If no more tool calls, we have reached the Final Answer
+            print(f"\n[FINAL ANSWER]:\n{response.text}")
+            break
+
+        tool_responses = []
+        for call in tool_calls:
+            print(f"[ACTION]: Calling tool '{call.name}' with args: {call.args}")
+            
+            # Execute the local function
+            if call.name == "search_internal_docs":
+                observation = search_internal_docs(**call.args)
+            elif call.name == "add_numbers":
+                observation = add_numbers(**call.args)
+            else:
+                observation = {"error": "Unknown tool"}
+
+            # 3. OBSERVATION: Print the result of the tool
+            print(f"[OBSERVATION]: {observation}")
+
+            # Prepare the response to send back to the LLM
+            tool_responses.append(
+                types.Part.from_function_response(name=call.name, response=observation)
+            )
+
+        # Pause to respect rate limits
+        time.sleep(1)
+
+        # Continue the loop
+        print("-" * 30 + " Feeding observations back to AI " + "-" * 30)
+        response = chat.send_message(tool_responses)
+
+if __name__ == "__main__":
+    query = "How much vacation time do I get, and what is 542.50 plus 123.40?"
+    run_gemini_agent(query, apikey)
+</file>
+
+<file path="slack_rag.py">
+import os
+from typing import List, Dict
+from dotenv import load_dotenv
+
+# Slack Bolt
+from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler
+
+from langchain_chroma import Chroma
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
+
+
+from langchain_classic.chains import create_retrieval_chain, create_history_aware_retriever
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+
+load_dotenv()
+
+
+BOT_TOKEN = os.getenv("slack_outh_token")
+APP_TOKEN = os.getenv("slack_app_token")
+API_KEY = os.getenv("apikey")
+
+
+chat_history_store: Dict[str, List] = {}
+
+def get_history(channel_id: str) -> List:
+    if channel_id not in chat_history_store:
+        chat_history_store[channel_id] = []
+    return chat_history_store[channel_id]
+
+
+def initialize_conversational_rag():
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    
+    vectorstore = Chroma(
+        persist_directory="./chroma_db", 
+        embedding_function=embeddings
+    )
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash", 
+        google_api_key=API_KEY,
+        temperature=0.7 # Increased slightly for more natural variety
+    )
+    contextualize_q_system_prompt = (
+        "Given the chat history and a new question, make it a standalone question "
+        "that can be understood without history. Do not answer it yet."
+    )
+    contextualize_q_prompt = ChatPromptTemplate.from_messages([
+        ("system", contextualize_q_system_prompt),
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ])
+    
+    history_aware_retriever = create_history_aware_retriever(
+        llm, retriever, contextualize_q_prompt
+    )
+
+    system_prompt = (
+        "You are a friendly and knowledgeable academic peer. "
+        "Answer the question naturally using the provided context. "
+        "CRITICAL RULES: "
+        "1. DO NOT say 'Based on the provided text', 'According to the documents', or 'Reference 1 says'. "
+        "2. Just answer the question directly as if you already knew the information. "
+        "3. If you don't know, just guide the user based on general knowledge or ask for clarification. "
+        "4. Maintain an encouraging, non-robotic tone.\n\n"
+        "5. Answer the question using only the information from the retrieved documents. Do not use any outside knowledge. "
+        "Context: {context}"
+    )
+    
+    qa_prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ])
+
+    combine_docs_chain = create_stuff_documents_chain(llm, qa_prompt)
+    return create_retrieval_chain(history_aware_retriever, combine_docs_chain)
+
+# 3. Slack Event Handling
+app = App(token=BOT_TOKEN)
+rag_chain = initialize_conversational_rag()
+
+@app.event("app_mention")
+def handle_mention(event, say):
+    channel_id = event['channel']
+    user_query = event['text'].split(">")[-1].strip()
+    
+    history = get_history(channel_id)
+    
+    try:
+        # Run the chain
+        response = rag_chain.invoke({
+            "input": user_query, 
+            "chat_history": history
+        })
+        
+        answer = response["answer"]
+        
+        # Update memory for the next turn
+        history.append(HumanMessage(content=user_query))
+        history.append(AIMessage(content=answer))
+        chat_history_store[channel_id] = history[-6:]
+        
+        say(text=answer)
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        say(text="Hey, I hit a snag while thinking. Can you try asking that again?")
+
+if __name__ == "__main__":
+    handler = SocketModeHandler(app, APP_TOKEN)
+    print(" Conversational  RAG on Slack!")
+    handler.start()
+</file>
+
+<file path="src/__init__.py">
+
+</file>
+
+<file path="src/agents/__init__.py">
+
+</file>
+
+<file path="src/agents/executor.py">
+from src.agents.tools import TOOLS
+from google import genai 
+from google.genai import types
+from src.config import GEMINI_API_KEY,MODEL_ID
+
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+
+SYSTEM_PROMPT = """
+You are a friendly and knowledgeable academic peer. Answer the question naturally using the provided context. CRITICAL RULES: 1. DO NOT say 'Based on the provided text', 'According to the documents', or 'Reference 1 says'. 2. Just answer the question directly as if you already knew the information. 3. If you don't know, just guide the user based on general knowledge or ask for clarification. 4. Maintain an encouraging, non-robotic tone.\n\n5. Answer the question using only the information from the retrieved documents. Do not use any outside knowledge. and if you can't answer then say I don't have information regarding that.
+"""
+
+
+def run_agent(user_query: str):
+    """
+    Main loop that sends a query to Gemini and executes 
+    tools if Gemini requests them.
+    """
+    
+    # Define the tools available to the LLM
+    # Note: We are only including Slack tools for now as per your request
+    
+
+    print(f"🤖 Agent received query: {user_query}")
+
+    # Generate content with tools enabled
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=user_query,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=TOOLS,
+            automatic_function_calling={"disable": False} # This handles the loop for you!
+        )
+    )
+
+    return response.text
+
+
+# if __name__ == "__main__":
+#     # Quick test
+#     print(run_agent("send message 'Hello team!' to #test channels and then fetch the recent history of the #general channel"))
+</file>
+
+<file path="src/agents/prompts.py">
+
+</file>
+
+<file path="src/agents/tools.py">
+from src.slack import service as slack_service 
+from  typing import List,Optional
+from src.rag.reteriver import query_vector_db
+from src.MCP.Github import service as github_service
+
+def get_slack_context(mode:str,channels:Optional[List[str]]=None):
+    '''
+        This function get_slack_context takes  2 modes 
+
+        1 =  all = > which fetches the history of all channels the bot is a member of
+        2 = specific => which fetches the history of specific channels provided in the channels list
+
+        channel => is used to  specify the channels and it is null when the mode is all
+    '''
+    print(f"Fetching Slack context with mode: {mode} and channels: {channels}")
+    if mode == "all":
+        return slack_service.get_all_joined_channels_history()
+    elif mode == "specific" and channels:
+        return slack_service.get_multiple_channels_history(channels)
+def send_slack_message(mode:str,text:str,channel:Optional[List[str]] = None):
+    '''
+    send Msg to channel it can be specific or all
+    '''
+    print(f"Sending Slack message with mode: {mode}, text: {text}, and channel: {channel}")
+    if mode == "all":
+        return slack_service.post_to_all_channels(text)
+    elif mode == "specific" and channel:
+        return slack_service.post_to_multiple_channels(channel, text)
+
+def query_vector_db_tool(mode:str,query:str,channel_names:Optional[List[str]]):
+    '''
+        This function get_slack_context takes  2 modes 
+
+        1 =  all = > which fetches the history of all channels the bot is a member of
+        2 = specific => which fetches the history of specific channels provided in the channels list
+
+        channel => is used to  specify the channels and it is null when the mode is all
+    '''
+    if mode == "all":
+        channel_names = slack_service.get_all_joined_channels()
+    elif mode == "specific" and channel_names:
+         channel_names = channel_names
+    print(f"Querying vector DB with query: {query} and channel_names: {channel_names}")
+    return query_vector_db(query, channel_names)
+
+def create_github_issues(title:str,body:str):
+    '''
+        This function creates a github issue with the provided title, body, and labels.
+    '''
+    print(f"Creating GitHub issue with title: {title}, body: {body}")
+    return github_service.create_issue(title, body)
+
+def  create_repo(name:str,description:str,private:bool):
+    '''
+        This function creates a github repository with the provided name, description, and private status.
+    '''
+    print(f"Creating GitHub repository with name: {name}, description: {description}, and private: {private}")
+    return github_service.create_repo(name, description, private)
+
+
+
+TOOLS =[ 
+    get_slack_context,
+    send_slack_message,
+    query_vector_db_tool,
+    create_github_issues,
+    create_repo
+]
+</file>
+
+<file path="src/config.py">
+import os 
+from dotenv import load_dotenv
+load_dotenv()
+
+SLACK_BOT_TOKEN = os.getenv("slack_outh_token")
+SLACK_APP_TOKEN = os.getenv("slack_app_token")
+GEMINI_API_KEY = os.getenv("apikey");
+
+MODEL_ID = "gemini-3-flash-preview"
+
+CHROME_PATH="./chromeDB"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2" #
+</file>
+
+<file path="src/main.py">
+import os
+from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler
+from src.agents.executor import run_agent
+from src.config import SLACK_BOT_TOKEN, SLACK_APP_TOKEN # Add these to your config.py
+
+app = App(token=SLACK_BOT_TOKEN)
+
+@app.event("app_mention")
+def handle_app_mentions(event, say):
+    """Handles cases where the bot is mentioned in a channel (@bot-name)"""
+    user_query = event["text"]
+    thread_ts = event.get("thread_ts", event["ts"])
+    
+    print(user_query,"This is the query")
+    # Optional: Visual "Thinking" indicator
+    print(f"Processing Slack Mention: {user_query}")
+    
+    try:
+        # Call your existing Gemini agent logic
+        response = run_agent(user_query)
+        
+        # Reply in the same thread
+        say(text=response, thread_ts=thread_ts)
+    except Exception as e:
+        say(text=f"❌ Error: {str(e)}", thread_ts=thread_ts)
+
+@app.event("message")
+def handle_message_events(event, say):
+    """Handles Direct Messages (DMs) to the bot"""
+    # Only respond to DMs (channel type 'im') to avoid infinite loops in public channels
+    if event.get("channel_type") == "im":
+        user_query = event["text"]
+        response = run_agent(user_query)
+        say(text=response)
+
+if __name__ == "__main__":
+    print("⚡️ Redshotlabs Agent is running on Slack (Socket Mode)!")
+    handler = SocketModeHandler(app, SLACK_APP_TOKEN)
+    handler.start()
+</file>
+
+<file path="src/MCP/Github/__init__.py">
+
+</file>
+
+<file path="src/MCP/Github/service.py">
+import os 
+from github  import Github,Auth
+from dotenv import load_dotenv
+
+load_dotenv()
+
+github_token  = os.getenv("github_token")
+
+auth = Auth.Token(github_token)
+g = Github(auth=auth)
+
+user = g.get_user()
+
+def create_repo(repo_name:str,description:str=None,private:bool=True,has_issues:bool=False):
+    try:
+        repo = user.create_repo(
+            name=repo_name,
+            description=description,
+            private=private,
+            has_issues=has_issues,
+        )
+        return f"✅ Repository '{repo_name}' created successfully."
+        
+    except Exception as e:
+        return f"❌ Error creating repository: {e}"
+        
+
+def create_issue(repo_name:str,title:str,body:str=None):
+    try:
+        repo = user.get_repo(repo_name)
+        issue = repo.create_issue(
+            title=title,
+            body=body,
+        )
+        return f"✅ Issue '{title}' created successfully."
+    except Exception as e:        
+        return f"❌ Error creating issue: {e}"
+</file>
+
+<file path="src/rag/__init__.py">
+
+</file>
+
+<file path="src/rag/ingest.py">
+import time
+from langchain_core.documents import Document
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from src.config import CHROME_PATH,EMBEDDING_MODEL
+from src.slack  import get_all_joined_channels_history
+from langchain_experimental.text_splitter import SemanticChunker
+from src.slack.service import get_channel_id_by_name,fetch_history
+
+
+def embedding_for_channels(channel_names: list):
+    combined_report = ""
+    for name in channel_names:
+        c_id = get_channel_id_by_name(name)
+        if c_id:
+            history = fetch_history(c_id, limit=50)
+            combined_report += f"\n--- RECENT MESSAGES FROM {name} ---\n{history}\n"
+        else:
+            combined_report += f"\n--- Could not find channel: {name} ---\n"
+    
+    if not combined_report.strip():
+        print("No data to embed from Slack.")
+        return
+    
+    doc = Document(page_content = combined_report,
+    metadata={"source": "slack","timestamp": time.time()})
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+    semantic_chunker = SemanticChunker(embeddings,breakpoint_threshold_type="percentile")
+    docs = [Document(page_content=combined_report,metadata={"source": "slack","timestamp": time.time()})]
+    semantic_chunks = semantic_chunker.split_documents(docs)
+
+    vector_store = Chroma(
+        persist_directory=CHROME_PATH,
+        embedding_function=embeddings
+    )
+    vector_store.add_documents(semantic_chunks)
+    print(f"Embedded {len(semantic_chunks)} chunks into the vector database.")
+
+
+def ingest_slack_to_rag():
+    slack_data = get_all_joined_channels_history()
+    if not slack_data or "I am not in any channels" in slack_data:
+        print("No data to ingest from Slack.")
+        return
+    doc = Document(page_content = slack_data,
+    metadata={"source": "slack","timestamp": time.time()})
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+    semantic_chunker = SemanticChunker(embeddings,breakpoint_threshold_type="percentile")
+    docs = [Document(page_content=slack_data,metadata={"source": "slack","timestamp": time.time()})]
+    semantic_chunks = semantic_chunker.split_documents(docs)
+
+    vector_store = Chroma(
+        persist_directory=CHROME_PATH,
+        embedding_function=embeddings
+    )
+    vector_store.add_documents(semantic_chunks)
+    print(f"Ingested {len(semantic_chunks)} chunks into the vector database.")
+
+
+if __name__ == "__main__":
+    ingest_slack_to_rag()
+</file>
+
+<file path="src/rag/reteriver.py">
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from src.config import CHROME_PATH,EMBEDDING_MODEL
+from .ingest import embedding_for_channels
+from src.utilis.reset_db import reset_database
+
+def query_vector_db(query:str,channel_names:list,k:int=3):
+    '''
+     REQUIRED for any 'Search' requests that specify specific channels.
+     Used for finding topics, trends, and specific information discussed in the past
+     across the specified Slack channels.
+    '''
+    try:
+        print("Querying the Vector DB...")
+        embedding_for_channels(channel_names)
+        print("Done the embedding for the channels, now accessing the vector database...")
+        embedding = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        vector_store = Chroma(
+            persist_directory=CHROME_PATH,
+            embedding_function=embedding
+        )
+
+        results = vector_store.max_marginal_relevance_search(query,k=k)
+        
+        if not results:
+            return "No relevant information found in the vector database."
+        context_text = "\n\n---\n\n".join([doc.page_content for doc in results])
+        return context_text
+
+    except Exception as e:
+        return f"Error accessing the Vector DB: {str(e)}"
+
+
+# if __name__ == "__main__":
+#     query = "Find me the content realted  to computer networks?"
+    
+#     print("Printing the content retrived from the vector database: \n",query_vector_db(query))
+</file>
+
+<file path="src/slack/__init__.py">
+from .service import (
+    get_all_joined_channels_history,
+    get_channel_id_by_name,
+    fetch_history,
+    post_to_all_channels,
+    post_to_multiple_channels
+)
+
+__all__ =[
+    "get_channel_id_by_name",
+    "fetch_history",
+    "get_multiple_channels_history",
+    "get_all_joined_channels_history",
+    "post_to_multiple_channels"
+]
+</file>
+
+<file path="src/slack/client.py">
+# src/slack/client.py
+from slack_bolt import App
+from slack_sdk import WebClient
+from src.config import SLACK_BOT_TOKEN
+
+# Shared client for all tools
+client = WebClient(token=SLACK_BOT_TOKEN) 
+# Bolt App for the main listener
+app = App(token=SLACK_BOT_TOKEN)
+</file>
+
+<file path="src/slack/handler.py">
+
+</file>
+
+<file path="src/slack/service.py">
+from src.config import SLACK_BOT_TOKEN
+from src.slack.client import client  
+
+def get_channel_id_by_name(name: str):
+    try:
+        clean_name = name.lstrip('#')
+        response = client.conversations_list()
+
+        for channel in response["channels"]:
+            if channel["name"] == clean_name:
+                return channel["id"]
+        return None
+    except Exception as e:
+        return f"Error finding channel: {e}"
+
+
+def fetch_history(channel_id: str, limit: int = 20):
+    try:
+        result = client.conversations_history(channel=channel_id, limit=limit)
+        messages = result["messages"]
+        # Format for LLM context
+        formatted = [f"User {m.get('user')}: {m.get('text')}" for m in messages[::-1]]
+        return "\n".join(formatted)
+    except Exception as e:
+        return f"Error fetching history: {e}"
+
+def get_multiple_channels_history(channel_names: list, limit_per_channel: int = 20):
+
+    combined_report = ""
+    for name in channel_names:
+        c_id = get_channel_id_by_name(name)
+        if c_id:
+            history = fetch_history(c_id, limit=limit_per_channel)
+            combined_report += f"\n--- RECENT MESSAGES FROM {name} ---\n{history}\n"
+        else:
+            combined_report += f"\n--- Could not find channel: {name} ---\n"
+    return combined_report
+def get_all_joined_channels():
+    try:
+        response = client.conversations_list()
+        joined_channels = [c for c in response["channels"] if c.get("is_member")]
+        return joined_channels
+    except Exception as e:
+        return f"Error fetching all channels: {e}"
+def get_all_joined_channels_history(limit_per_channel: int = 15):
+    try:
+        
+        response = client.conversations_list()
+        # print(response,"This is the reponse in the function get_all_joined_channels_history")
+        joined_channels = [c for c in response["channels"] if c.get("is_member")]
+        # print(joined_channels,"")
+        
+        all_history = ""
+        for channel in joined_channels:
+            history = fetch_history(channel["id"], limit=limit_per_channel)
+            all_history += f"\n--- CHANNEL: {channel['name']} ---\n{history}\n"
+        
+        return all_history if all_history else "I am not in any channels yet."
+    except Exception as e:
+        return f"Error fetching all channels: {e}"
+def post_to_all_channels(text: str):
+    try:
+        response = client.conversations_list()
+        joined_channels = [c for c in response["channels"] if c.get("is_member")]
+        for channel in joined_channels:
+            client.chat_postMessage(channel=channel["id"], text=text)
+        return "Sent to all channels."
+    except Exception as e:
+        return f"Error posting to all channels: {e}"
+def post_to_multiple_channels(channel_names: list, text: str):
+    # print("Posting to multiple channels:", channel_names, text)
+    results = []
+    for name in channel_names:
+        c_id = get_channel_id_by_name(name)
+        # print(f"Channel: {name}, ID: {c_id}")
+        if c_id:
+            try:
+                client.chat_postMessage(channel=c_id, text=text)
+                results.append(f"Sent to {name}")
+            except Exception as e:
+                results.append(f"Failed {name}: {e}")
+        else:
+            results.append(f"❓ Channel {name} not found.")
+    return "\n".join(results)
+
+
+
+    # Quick test
+    # print(get_all_joined_channels_history())
+    # print(get_channel_id_by_name("#general"))
+    # print(fetch_history(get_channel_id_by_name("#general")))
+</file>
+
+<file path="src/utilis/reset_db.py">
+import shutil
+import os
+from src.config import CHROME_PATH
+
+def reset_database():
+    if os.path.exists(CHROME_PATH):
+        shutil.rmtree(CHROME_PATH)
+        print(f"🗑️ Database at {CHROME_PATH} has been deleted. Ready for a clean start!")
+    else:
+        print(" No database found to delete.")
+
+if __name__ == "__main__":
+    reset_database()
+</file>
+
+</files>
