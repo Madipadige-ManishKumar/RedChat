@@ -6,7 +6,7 @@ SLACK_BOT_TOKEN = os.getenv("slack_outh_token")
 SLACK_APP_TOKEN = os.getenv("slack_app_token")
 GEMINI_API_KEY = os.getenv("apikey");
 
-MODEL_ID = "gemini-3-flash-preview"
+MODEL_ID = "gemini-2.5-flash"
 
 CHROME_PATH="./chromeDB"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2" #
